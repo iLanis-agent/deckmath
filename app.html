@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeckMath - honest deck math</title>
+<style>
+  :root { --bg:#12150f; --card:#1b1f14; --ink:#eff2e4; --dim:#a3ab8c; --acc:#9db35c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding:28px 24px 8px; max-width:980px; margin:0 auto; display:flex; justify-content:space-between; align-items:baseline; }
+  h1 { margin:0; font-size:28px; }
+  h1 span { color:var(--acc); }
+  nav a { color:var(--dim); text-decoration:none; font-size:14px; }
+  main { max-width:980px; margin:0 auto; padding:16px 24px 60px; display:grid; gap:18px; }
+  .card { background:var(--card); border-radius:14px; padding:20px; }
+  .card h2 { margin:0 0 12px; font-size:13px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; }
+  label { display:block; font-size:13px; color:var(--dim); margin-bottom:4px; }
+  input, select { width:100%; background:#14170e; border:1px solid #40492e; color:var(--ink); border-radius:8px; padding:9px 10px; font-size:15px; }
+  .hint { font-size:12.5px; color:var(--dim); margin-top:10px; }
+  button { cursor:pointer; border:0; border-radius:9px; padding:11px 16px; font-size:15px; background:var(--acc); color:#1e240e; font-weight:600; }
+  button.ghost { background:#333b22; color:var(--ink); font-weight:500; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .verdict { font-size:17px; line-height:1.65; }
+  .verdict b { color:var(--acc); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:16px; }
+  .stat { background:#14170e; border-radius:10px; padding:12px; }
+  .stat .v { font-size:19px; font-weight:700; color:var(--acc); }
+  .stat .k { font-size:12px; color:var(--dim); margin-top:2px; }
+  .note { margin-top:14px; font-size:13.5px; color:var(--dim); }
+  .note b { color:var(--acc); font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Deck<span>Math</span></h1>
+  <nav><a href="index.html">home</a></nav>
+</header>
+<main>
+  <section class="card">
+    <h2>The deck</h2>
+    <div class="grid">
+      <div><label>Length (ft, board direction)</label><input id="len" type="number" value="16"></div>
+      <div><label>Width (ft)</label><input id="wid" type="number" value="12"></div>
+      <div><label>Board length</label><select id="boardLen">
+        <option value="8">8 ft</option>
+        <option value="12">12 ft</option>
+        <option value="16" selected>16 ft</option>
+        <option value="20">20 ft</option>
+      </select></div>
+      <div><label>Surface</label><select id="surface">
+        <option value="pt" selected>Pressure-treated ($1.50/lin ft)</option>
+        <option value="composite">Composite ($3.50/lin ft)</option>
+      </select></div>
+    </div>
+    <p class="hint">A 5.5-inch board plus a 0.25-inch gap covers 5.75 inches per row - the gap is part of the board, and forgetting it is how decks end one board short.</p>
+    <div class="row">
+      <button id="run">Frame it honestly</button>
+      <button class="ghost" data-preset="classic">the classic 16x12</button>
+      <button class="ghost" data-preset="landing">grill landing 10x8</button>
+      <button class="ghost" data-preset="big">the composite wraparound</button>
+    </div>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <h2>The lumber list</h2>
+    <p class="verdict" id="verdictText"></p>
+    <div class="stats" id="stats"></div>
+    <p class="note" id="advice"></p>
+  </section>
+
+  <section class="card">
+    <h2>The frame outlives the surface</h2>
+    <p class="note">Decks fail at the <b>ledger flashing</b>, not the boards. Joists go <b>16 inches on center, never 24 for 5/4 boards</b>, two screws at every crossing - about <b>75 screws to the pound</b>. Composite costs double up front and pays it back in unstained weekends, but it rides on the same honest frame. And pressure-treated lumber arrives wet: stack it with spacers and <b>wait a season before stain</b>, or it peels by the second summer.</p>
+  </section>
+</main>
+<script src="engine.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var money = function (x) { return '$' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+
+  var PRESETS = {
+    classic: { len: 16, wid: 12, boardLen: '16', surface: 'pt' },
+    landing: { len: 10, wid: 8, boardLen: '12', surface: 'pt' },
+    big: { len: 24, wid: 14, boardLen: '20', surface: 'composite' }
+  };
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.onclick = function () {
+      var p = PRESETS[b.dataset.preset];
+      Object.keys(p).forEach(function (k) { $(k).value = p[k]; });
+      run();
+    };
+  });
+
+  function run() {
+    var L = +$('len').value || 0, W = +$('wid').value || 0;
+    if (L <= 0 || W <= 0) { alert('Enter deck dimensions.'); return; }
+    var est = DeckMath.estimate({
+      lengthFt: L, widthFt: W,
+      boardLenFt: +$('boardLen').value,
+      composite: $('surface').value === 'composite'
+    });
+
+    $('verdictText').innerHTML = 'A ' + L + 'x' + W + ' deck is ' + est.rows + ' rows and <b>' + est.boards +
+      ' ' + est.boardLen + '-ft boards</b> (10% cut waste in), on <b>' + est.joists + ' joists</b> and ' +
+      est.footings + ' footings, held by ' + est.screwLbs + ' lb of screws - <b>' + money(est.total) +
+      '</b> in materials, frame and surface.';
+
+    var stats = [
+      { v: est.boards, k: est.boardLen + '-ft deck boards' },
+      { v: est.joists, k: 'joists at 16" o.c.' },
+      { v: est.footings, k: 'footings (posts every 6 ft)' },
+      { v: est.screwLbs + ' lb', k: '3-inch deck screws' },
+      { v: money(est.deckCost), k: 'surface' },
+      { v: money(est.frameCost), k: 'frame + hardware' }
+    ];
+    $('stats').innerHTML = stats.map(function (x) {
+      return '<div class="stat"><div class="v">' + x.v + '</div><div class="k">' + x.k + '</div></div>';
+    }).join('');
+
+    $('advice').innerHTML = DeckMath.advice(est);
+    $('result').hidden = false;
+    $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  $('run').onclick = run;
+})();
+</script>
+</body>
+</html>
